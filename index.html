@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C语言刷题小工具</title>
+    <style>
+        body {
+            font-family: '微软雅黑', sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .question-box {
+            margin-bottom: 20px;
+        }
+        .question-number {
+            color: #2c3e50;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        .question-text {
+            font-size: 1.1em;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+        .choices {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .choice-btn {
+            padding: 12px;
+            border: 2px solid #bdc3c7;
+            border-radius: 5px;
+            background: white;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-align: left;
+        }
+        .choice-btn:hover {
+            background: #ecf0f1;
+            border-color: #3498db;
+        }
+        .choice-btn.correct {
+            background: #2ecc71;
+            border-color: #27ae60;
+            color: white;
+        }
+        .choice-btn.wrong {
+            background: #e74c3c;
+            border-color: #c0392b;
+            color: white;
+        }
+        .analysis {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-left: 4px solid #3498db;
+            display: none;
+        }
+        .nav-buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: space-between;
+        }
+        .nav-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            background: #3498db;
+            color: white;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .nav-btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .nav-btn:hover:not(:disabled) {
+            background: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="question-box">
+            <div class="question-number" id="questionNumber">第1题/共0题</div>
+            <div class="question-text" id="questionText"></div>
+            <div class="choices" id="choicesContainer"></div>
+            <div class="analysis" id="analysisBox">
+                <strong>解析：</strong><span id="analysisText"></span>
+            </div>
+        </div>
+        <div class="mode-select" style="margin-bottom:20px;padding:15px;background:#f8f9fa;border-radius:5px;">
+            <label>选择模式：</label>
+            <select id="modeSelect" class="nav-btn" style="padding:6px 12px;">
+                <option value="sequential">顺序模式</option>
+                <option value="random">随机模式</option>
+            </select>
+        </div>
+        <div class="nav-buttons">
+        <button class="nav-btn" id="prevBtn" onclick="prevQuestion()">上一题</button>
+        <button class="nav-btn" id="nextBtn" onclick="nextQuestion()">下一题</button>
+    </div>
+    <div class="stats-box" style="margin-top:20px;padding:15px;background:#f8f9fa;border-radius:5px;">
+        <p>统计：正确 <span id="correctCount">0</span> 题 / 错误 <span id="wrongCount">0</span> 题 / 总题数 <span id="totalCount">0</span> 题</p>
+    </div>
+    <div class="question-nav" style="margin-top:20px;display:flex;flex-wrap:wrap;gap:8px;">
+        <p style="width:100%;margin:0 0 8px 0;">题目导航：</p>
+        <div id="questionNav" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+    </div>
+    </div>
+
+    <footer style="text-align: center; margin: 20px 0; color: #666; font-size: 0.9em;">
+        联系作者：hy13503007302
+    </footer>
+
+    <script>
+        let currentQuestion = 0;
+        let questions = [];
+        let originalQuestions = []; // 存储原始题目数据
+        let stats = { correct: 0, wrong: 0 };
+        let wrongQuestions = new Set(); // 存储错题索引
+        let mode = 'sequential'; // 默认顺序模式
+
+        // 处理模式切换
+        function handleModeChange() {
+            mode = document.getElementById('modeSelect').value;
+            currentQuestion = 0; // 重置当前题目
+            stats = { correct: 0, wrong: 0 }; // 重置统计
+            wrongQuestions.clear(); // 清空错题
+            // 根据模式重新加载题目
+            if(mode === 'random'){
+                questions = [...originalQuestions].sort(() => Math.random() - 0.5);
+            } else {
+                questions = [...originalQuestions];
+            }
+            updateQuestion();
+        }
+
+        // 初始化加载题目
+        async function loadQuestions() {
+            try {
+                const response = await fetch('title.json');
+                const data = await response.json();
+                originalQuestions = data.questions; // 保存原始数据
+                questions = [...originalQuestions]; // 初始使用原始顺序
+                updateQuestion();
+                document.getElementById('questionNumber').textContent = `第${currentQuestion + 1}题/共${questions.length}题`;
+            document.getElementById('totalCount').textContent = questions.length;
+            document.getElementById('correctCount').textContent = stats.correct;
+            document.getElementById('wrongCount').textContent = stats.wrong;
+            // 生成题目导航按钮
+            const navContainer = document.getElementById('questionNav');
+            navContainer.innerHTML = '';
+            questions.forEach((_, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'nav-btn';
+                btn.style.padding = '6px 12px';
+                btn.textContent = index + 1;
+                if(wrongQuestions.has(index)){
+                    btn.style.backgroundColor = '#e74c3c';
+                }
+                btn.onclick = () => {
+                    currentQuestion = index;
+                    updateQuestion();
+                };
+                navContainer.appendChild(btn);
+            });
+            } catch (error) {
+                alert('加载题目失败，请检查title.json文件是否存在');
+                console.error('加载错误：', error);
+            }
+        }
+
+        // 更新题目显示
+        function updateQuestion() {
+            const q = questions[currentQuestion];
+            document.getElementById('questionText').textContent = q.question;
+            document.getElementById('analysisText').textContent = q.analysis;
+            document.getElementById('analysisBox').style.display = 'none';
+
+            // 生成选项按钮
+            const choicesContainer = document.getElementById('choicesContainer');
+            choicesContainer.innerHTML = '';
+            q.choices.forEach((choice, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'choice-btn';
+                btn.textContent = String.fromCharCode(65 + index) + '. ' + choice;
+                btn.onclick = () => checkAnswer(btn, String.fromCharCode(65 + index));
+                choicesContainer.appendChild(btn);
+            });
+
+            // 控制导航按钮状态
+            document.getElementById('prevBtn').disabled = currentQuestion === 0;
+            document.getElementById('nextBtn').textContent = currentQuestion === questions.length - 1 ? '完成' : '下一题';
+            // 更新题号显示
+            document.getElementById('questionNumber').textContent = `第${currentQuestion + 1}题/共${questions.length}题`;
+        }
+
+        // 检查答案
+        function checkAnswer(btn, selected) {
+            const correct = questions[currentQuestion].answer;
+            // 更新统计
+            if(selected === correct){
+                stats.correct++;
+                wrongQuestions.delete(currentQuestion);
+            } else {
+                stats.wrong++;
+                wrongQuestions.add(currentQuestion);
+            }
+            // 显示正确答案
+            document.querySelectorAll('.choice-btn').forEach(btn => {
+                btn.disabled = true;
+                if (btn.textContent[0] === correct) {
+                    btn.classList.add('correct');
+                }
+            });
+            // 标记错误答案
+            if (selected !== correct) {
+                btn.classList.add('wrong');
+            }
+            // 显示解析并更新统计
+            document.getElementById('analysisBox').style.display = 'block';
+            document.getElementById('correctCount').textContent = stats.correct;
+            document.getElementById('wrongCount').textContent = stats.wrong;
+            // 更新导航按钮样式
+            document.querySelectorAll('#questionNav button').forEach((btn, index) => {
+                if(wrongQuestions.has(index)){
+                    btn.style.backgroundColor = '#e74c3c';
+                } else {
+                    btn.style.backgroundColor = '#3498db';
+                }
+            });
+        }
+
+        // 上一题
+        function prevQuestion() {
+            if (currentQuestion > 0) {
+                currentQuestion--;
+                updateQuestion();
+            }
+        }
+
+        // 下一题
+        function nextQuestion() {
+            if (currentQuestion < questions.length - 1) {
+                currentQuestion++;
+                updateQuestion();
+            } else {
+                alert('所有题目已完成！');
+            }
+        }
+
+        // 页面加载时初始化
+        window.onload = () => {
+            loadQuestions();
+            // 添加模式切换监听
+            document.getElementById('modeSelect').addEventListener('change', handleModeChange);
+        };
+    </script>
+</body>
+</html>
